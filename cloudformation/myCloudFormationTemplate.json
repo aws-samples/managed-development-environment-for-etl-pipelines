@@ -1,0 +1,845 @@
+{
+    "Description": "This template is to create a ETL development environment.",
+    "Outputs": {
+        "devendpointName": {
+            "Description": "Name of the dev end point",
+            "Value": {
+                "Ref": "devendpointName"
+            }
+        },
+        "notebookName": {
+            "Description": "Name of the sagemaker notebook",
+            "Value": {
+                "Ref": "notebookName"
+            }
+        }
+    },
+    "Parameters": {
+        "RepositoryDescription": {
+            "Default": "This is a ETLDevSandbox repository.",
+            "Description": "Description of the codecommit repository",
+            "Type": "String"
+        },
+        "RepositoryName": {
+            "Default": "ETLDevSandboxCodeCommitRepository",
+            "Description": "Name of the codecommit repository",
+            "Type": "String"
+        },
+        "codeCommitBranchName": {
+            "Default": "main",
+            "Description": "Lambda function script location s3 key.",
+            "Type": "String"
+        },
+        "codeCommitRepoInitFilesS3Key": {
+            "Default": "scripts/repo_initial_files.zip",
+            "Description": "Initial files to be added to the repo.",
+            "Type": "String"
+        },
+        "devendpointName": {
+            "Default": "ETLDevSandbox_GlueDevEndPoint",
+            "Description": "Name of the AWS glue development endpoint",
+            "Type": "String"
+        },
+        "glueJobName": {
+            "Default": "ETLDevSandbox_GlueJob",
+            "Description": "Name of the Glue job.",
+            "Type": "String"
+        },
+        "glueJobScriptS3Key": {
+            "Default": "scripts/glue_wrapper.py",
+            "Description": "S3 key of the glue job in s3.",
+            "Type": "String"
+        },
+        "glueRoleName": {
+            "Default": "ETLDevSandbox_GlueRole",
+            "Description": "IAM role for the Glue job.",
+            "Type": "String"
+        },
+        "glueVersion": {
+            "Default": "1.0",
+            "Description": "Version of AWS Glue libraries.",
+            "Type": "String"
+        },
+        "lambdaFunctionHandler": {
+            "Default": "lambda_function.lambda_handler",
+            "Description": "Version of AWS Glue libraries.",
+            "Type": "String"
+        },
+        "lambdaFunctionName": {
+            "Default": "ETLDevSandbox_LambdaFunction",
+            "Description": "Lambda function name.",
+            "Type": "String"
+        },
+        "lambdaFunctionS3key": {
+            "Default": "scripts/lambda_function.zip",
+            "Description": "Lambda function script location s3 key.",
+            "Type": "String"
+        },
+        "lambdaRoleName": {
+            "Default": "ETLDevSandbox_LambdaRole",
+            "Description": "IAM role for the lambda function.",
+            "Type": "String"
+        },
+        "maxConcurrentRuns": {
+            "Default": 10,
+            "Description": "Number of max concurrent runs.",
+            "Type": "Number"
+        },
+        "notebookName": {
+            "Default": "ETLDevSandbox-SageMakerNotebook",
+            "Description": "Name of the sagemaker notebook",
+            "Type": "String"
+        },
+        "numberOfNodes": {
+            "Default": 5,
+            "Description": "Number of nodes for the Glue development endpoint.",
+            "Type": "Number"
+        },
+        "sagemakerNotebookRoleName": {
+            "Default": "ETLDevSandbox_SagemakerNotebookRole",
+            "Description": "IAM role for the SageMaker notebook.",
+            "Type": "String"
+        },
+        "sandboxS3Bucket": {
+            "Description": "sandbox s3 bucket.",
+            "Type": "String"
+        }
+    },
+    "Resources": {
+        "CodeCommitRepository": {
+            "DependsOn": [
+                "lambdaFunction"
+            ],
+            "Properties": {
+                "Code": {
+                    "BranchName": {
+                        "Ref": "codeCommitBranchName"
+                    },
+                    "S3": {
+                        "Bucket": {
+                            "Ref": "sandboxS3Bucket"
+                        },
+                        "Key": {
+                            "Ref": "codeCommitRepoInitFilesS3Key"
+                        }
+                    }
+                },
+                "RepositoryDescription": {
+                    "Ref": "RepositoryDescription"
+                },
+                "RepositoryName": {
+                    "Ref": "RepositoryName"
+                },
+                "Tags": [
+                    {
+                        "Key": "owner",
+                        "Value": "myOrg"
+                    },
+                    {
+                        "Key": "project",
+                        "Value": "ETLDevSandbox"
+                    }
+                ],
+                "Triggers": [
+                    {
+                        "Branches": [
+                            {
+                                "Ref": "codeCommitBranchName"
+                            }
+                        ],
+                        "DestinationArn": {
+                            "Fn::GetAtt": [
+                                "lambdaFunction",
+                                "Arn"
+                            ]
+                        },
+                        "Events": [
+                            "updateReference"
+                        ],
+                        "Name": "MyLambdaTrigger"
+                    }
+                ]
+            },
+            "Type": "AWS::CodeCommit::Repository"
+        },
+        "getGlueDEP": {
+            "DependsOn": [
+                "glueDevEndPointRole"
+            ],
+            "Properties": {
+                "Arguments": {
+                    "--enable-glue-datacatalog": "True",
+                    "GLUE_PYTHON_VERSION": "3"
+                },
+                "EndpointName": {
+                    "Ref": "devendpointName"
+                },
+                "GlueVersion": {
+                    "Ref": "glueVersion"
+                },
+                "NumberOfNodes": {
+                    "Ref": "numberOfNodes"
+                },
+                "RoleArn": {
+                    "Fn::GetAtt": [
+                        "glueDevEndPointRole",
+                        "Arn"
+                    ]
+                },
+                "Tags": {
+                    "owner": "myOrg",
+                    "project": "ETLDevSandbox"
+                }
+            },
+            "Type": "AWS::Glue::DevEndpoint"
+        },
+        "glueDevEndPointRole": {
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Statement": [
+                        {
+                            "Action": [
+                                "sts:AssumeRole"
+                            ],
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": "glue.amazonaws.com"
+                            }
+                        }
+                    ]
+                },
+                "Description": "Glue dev endpoint and job role",
+                "ManagedPolicyArns": [
+                    "arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole"
+                ],
+                "Policies": [
+                    {
+                        "PolicyDocument": {
+                            "Id": "inlineGluePolicy",
+                            "Statement": [
+                                {
+                                    "Action": [
+                                        "glue:GetDatabase",
+                                        "glue:GetDatabases",
+                                        "glue:CreateDatabase",
+                                        "glue:UpdateDatabase",
+                                        "glue:DeleteDatabase",
+                                        "glue:CreateTable",
+                                        "glue:DeleteTable",
+                                        "glue:GetTable",
+                                        "glue:GetTables",
+                                        "glue:UpdateTable",
+                                        "glue:BatchDeleteTable",
+                                        "glue:BatchCreatePartition",
+                                        "glue:BatchDeletePartition",
+                                        "glue:BatchGetPartition",
+                                        "glue:CreatePartition",
+                                        "glue:DeletePartition",
+                                        "glue:GetPartition",
+                                        "glue:GetPartitions",
+                                        "glue:UpdatePartition",
+                                        "glue:GetDevEndpoint",
+                                        "glue:GetDevEndpoints",
+                                        "glue:ListDevEndpoints",
+                                        "glue:BatchGetTriggers",
+                                        "glue:CreateTrigger",
+                                        "glue:DeleteTrigger",
+                                        "glue:GetTriggers",
+                                        "glue:GetTrigger",
+                                        "glue:ListTriggers",
+                                        "glue:StartTrigger",
+                                        "glue:StopTrigger",
+                                        "glue:UpdateTrigger"
+                                    ],
+                                    "Effect": "Allow",
+                                    "Resource": [
+                                        "*"
+                                    ]
+                                },
+                                {
+                                    "Action": [
+                                        "s3:*"
+                                    ],
+                                    "Effect": "Allow",
+                                    "Resource": [
+                                        "*"
+                                    ]
+                                }
+                            ],
+                            "Version": "2012-10-17"
+                        },
+                        "PolicyName": "GlueAccessPolicy"
+                    }
+                ],
+                "RoleName": {
+                    "Ref": "glueRoleName"
+                }
+            },
+            "Type": "AWS::IAM::Role"
+        },
+        "glueWrapperJob": {
+            "DependsOn": [
+                "glueDevEndPointRole"
+            ],
+            "Properties": {
+                "Command": {
+                    "Name": "glueetl",
+                    "ScriptLocation": {
+                        "Fn::Join": [
+                            "",
+                            [
+                                "s3://",
+                                {
+                                    "Ref": "sandboxS3Bucket"
+                                },
+                                "/",
+                                {
+                                    "Ref": "glueJobScriptS3Key"
+                                }
+                            ]
+                        ]
+                    }
+                },
+                "Description": "This job serves as a wrapper for your ETL transformation applications.",
+                "ExecutionProperty": {
+                    "MaxConcurrentRuns": {
+                        "Ref": "maxConcurrentRuns"
+                    }
+                },
+                "GlueVersion": {
+                    "Ref": "glueVersion"
+                },
+                "Name": {
+                    "Ref": "glueJobName"
+                },
+                "Role": {
+                    "Fn::GetAtt": [
+                        "glueDevEndPointRole",
+                        "Arn"
+                    ]
+                },
+                "Tags": {
+                    "owner": "myOrg",
+                    "project": "ETLDevSandbox"
+                }
+            },
+            "Type": "AWS::Glue::Job"
+        },
+        "lambdaFunction": {
+            "DependsOn": [
+                "lambdaRole"
+            ],
+            "Properties": {
+                "Code": {
+                    "S3Bucket": {
+                        "Ref": "sandboxS3Bucket"
+                    },
+                    "S3Key": {
+                        "Ref": "lambdaFunctionS3key"
+                    }
+                },
+                "Description": "Lambda function to create glue trigger and deploy glue job scripts.",
+                "FunctionName": {
+                    "Ref": "lambdaFunctionName"
+                },
+                "Handler": {
+                    "Ref": "lambdaFunctionHandler"
+                },
+                "MemorySize": 2048,
+                "Role": {
+                    "Fn::GetAtt": [
+                        "lambdaRole",
+                        "Arn"
+                    ]
+                },
+                "Runtime": "python3.8",
+                "Tags": [
+                    {
+                        "Key": "owner",
+                        "Value": "myOrg"
+                    },
+                    {
+                        "Key": "project",
+                        "Value": "ETLDevSandbox"
+                    }
+                ],
+                "Timeout": 300
+            },
+            "Type": "AWS::Lambda::Function"
+        },
+        "lambdaPermission": {
+            "DependsOn": [
+                "CodeCommitRepository",
+                "lambdaFunction"
+            ],
+            "Properties": {
+                "Action": "lambda:InvokeFunction",
+                "FunctionName": {
+                    "Fn::GetAtt": [
+                        "lambdaFunction",
+                        "Arn"
+                    ]
+                },
+                "Principal": "codecommit.amazonaws.com",
+                "SourceAccount": {
+                    "Ref": "AWS::AccountId"
+                },
+                "SourceArn": {
+                    "Fn::GetAtt": [
+                        "CodeCommitRepository",
+                        "Arn"
+                    ]
+                }
+            },
+            "Type": "AWS::Lambda::Permission"
+        },
+        "lambdaRole": {
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Statement": [
+                        {
+                            "Action": [
+                                "sts:AssumeRole"
+                            ],
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": "lambda.amazonaws.com"
+                            }
+                        }
+                    ]
+                },
+                "Description": "Lambda role",
+                "ManagedPolicyArns": [
+                    "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+                ],
+                "Policies": [
+                    {
+                        "PolicyDocument": {
+                            "Id": "inlineGluePolicy",
+                            "Statement": [
+                                {
+                                    "Action": [
+                                        "glue:GetDatabase",
+                                        "glue:GetDatabases",
+                                        "glue:CreateDatabase",
+                                        "glue:UpdateDatabase",
+                                        "glue:DeleteDatabase",
+                                        "glue:CreateTable",
+                                        "glue:DeleteTable",
+                                        "glue:GetTable",
+                                        "glue:GetTables",
+                                        "glue:UpdateTable",
+                                        "glue:BatchDeleteTable",
+                                        "glue:BatchCreatePartition",
+                                        "glue:BatchDeletePartition",
+                                        "glue:BatchGetPartition",
+                                        "glue:CreatePartition",
+                                        "glue:DeletePartition",
+                                        "glue:GetPartition",
+                                        "glue:GetPartitions",
+                                        "glue:UpdatePartition",
+                                        "glue:GetDevEndpoint",
+                                        "glue:GetDevEndpoints",
+                                        "glue:ListDevEndpoints",
+                                        "glue:BatchGetTriggers",
+                                        "glue:CreateTrigger",
+                                        "glue:DeleteTrigger",
+                                        "glue:GetTriggers",
+                                        "glue:GetTrigger",
+                                        "glue:ListTriggers",
+                                        "glue:StartTrigger",
+                                        "glue:StopTrigger",
+                                        "glue:UpdateTrigger"
+                                    ],
+                                    "Effect": "Allow",
+                                    "Resource": [
+                                        "*"
+                                    ]
+                                },
+                                {
+                                    "Action": [
+                                        "s3:Get*",
+                                        "s3:Put*"
+                                    ],
+                                    "Effect": "Allow",
+                                    "Resource": [
+                                        {
+                                            "Fn::Join": [
+                                                "",
+                                                [
+                                                    "arn:aws:s3:::",
+                                                    {
+                                                        "Ref": "sandboxS3Bucket"
+                                                    }
+                                                ]
+                                            ]
+                                        },
+                                        {
+                                            "Fn::Join": [
+                                                "",
+                                                [
+                                                    "arn:aws:s3:::",
+                                                    {
+                                                        "Ref": "sandboxS3Bucket"
+                                                    },
+                                                    "/*"
+                                                ]
+                                            ]
+                                        }
+                                    ]
+                                },
+                                {
+                                    "Action": [
+                                        "codecommit:Get*"
+                                    ],
+                                    "Effect": "Allow",
+                                    "Resource": [
+                                        "*"
+                                    ]
+                                }
+                            ],
+                            "Version": "2012-10-17"
+                        },
+                        "PolicyName": "LambdaAccessPolicy"
+                    }
+                ],
+                "RoleName": {
+                    "Ref": "lambdaRoleName"
+                }
+            },
+            "Type": "AWS::IAM::Role"
+        },
+        "sageMakerNotebook": {
+            "DependsOn": [
+                "sagemakerNotebookRole",
+                "sageMakerNotebookLifeCycleConfig",
+                "getGlueDEP"
+            ],
+            "Properties": {
+                "DefaultCodeRepository": {
+                    "Fn::GetAtt": [
+                        "CodeCommitRepository",
+                        "CloneUrlHttp"
+                    ]
+                },
+                "InstanceType": "ml.t2.medium",
+                "LifecycleConfigName": {
+                    "Fn::GetAtt": [
+                        "sageMakerNotebookLifeCycleConfig",
+                        "NotebookInstanceLifecycleConfigName"
+                    ]
+                },
+                "NotebookInstanceName": {
+                    "Ref": "notebookName"
+                },
+                "RoleArn": {
+                    "Fn::GetAtt": [
+                        "sagemakerNotebookRole",
+                        "Arn"
+                    ]
+                },
+                "Tags": [
+                    {
+                        "Key": "aws-glue-dev-endpoint",
+                        "Value": {
+                            "Ref": "devendpointName"
+                        }
+                    },
+                    {
+                        "Key": "owner",
+                        "Value": "myOrg"
+                    },
+                    {
+                        "Key": "project",
+                        "Value": "ETLDevSandbox"
+                    }
+                ]
+            },
+            "Type": "AWS::SageMaker::NotebookInstance"
+        },
+        "sageMakerNotebookLifeCycleConfig": {
+            "Properties": {
+                "NotebookInstanceLifecycleConfigName": "sageMakerNotebookLifeCycleConfig",
+                "OnCreate": [
+                    {
+                        "Content": {
+                            "Fn::Base64": {
+                                "Fn::Join": [
+                                    "",
+                                    [
+                                        "#!/bin/bash\n",
+                                        "set -ex\n",
+                                        "[ -e /home/ec2-user/glue_ready ] && exit 0\n",
+                                        "\n",
+                                        "mkdir -p /home/ec2-user/glue\n",
+                                        "cd /home/ec2-user/glue\n",
+                                        "\n",
+                                        "# Write dev endpoint in a file which will be used by daemon scripts\n",
+                                        "glue_endpoint_file=\"/home/ec2-user/glue/glue_endpoint.txt\"\n",
+                                        "\n",
+                                        "if [ -f $glue_endpoint_file ] ; then\n",
+                                        "    rm $glue_endpoint_file\n",
+                                        "fi\n",
+                                        "echo \"https://glue.us-east-1.amazonaws.com\" >> $glue_endpoint_file\n",
+                                        "\n",
+                                        "ASSETS=s3://aws-glue-jes-prod-us-east-1-assets/sagemaker/assets/\n",
+                                        "\n",
+                                        "aws s3 cp ${ASSETS} . --recursive\n",
+                                        "\n",
+                                        "bash \"/home/ec2-user/glue/Miniconda2-4.5.12-Linux-x86_64.sh\" -b -u -p \"/home/ec2-user/glue/miniconda\"\n",
+                                        "\n",
+                                        "source \"/home/ec2-user/glue/miniconda/bin/activate\"\n",
+                                        "\n",
+                                        "tar -xf autossh-1.4e.tgz\n",
+                                        "cd autossh-1.4e\n",
+                                        "./configure\n",
+                                        "make\n",
+                                        "sudo make install\n",
+                                        "cp /home/ec2-user/glue/autossh-1.4e/autossh.host /home/ec2-user/glue/autossh.host\n",
+                                        "sudo cp /home/ec2-user/glue/autossh.conf /etc/init/\n",
+                                        "\n",
+                                        "mkdir -p /home/ec2-user/.sparkmagic\n",
+                                        "cp /home/ec2-user/glue/config.json /home/ec2-user/.sparkmagic/config.json\n",
+                                        "\n",
+                                        "mkdir -p /home/ec2-user/SageMaker/Glue\\ Examples\n",
+                                        "mv /home/ec2-user/glue/notebook-samples/* /home/ec2-user/SageMaker/Glue\\ Examples/\n",
+                                        "\n",
+                                        "# ensure SageMaker notebook has permission for the dev endpoint\n",
+                                        "NOTEBOOK_ARN=$(jq '.ResourceArn' /opt/ml/metadata/resource-metadata.json --raw-output)\n",
+                                        "GLUE_DEV_ENDPOINT_TAG=$(aws sagemaker list-tags --resource-arn $NOTEBOOK_ARN | jq -r '.Tags[] | select(.Key == \"aws-glue-dev-endpoint\") | .Value')\n",
+                                        "aws glue get-dev-endpoint --endpoint-name $GLUE_DEV_ENDPOINT_TAG --endpoint https://glue.us-east-1.amazonaws.com\n",
+                                        "\n",
+                                        "# Run daemons as cron jobs and use flock make sure that daemons are started only iff stopped\n",
+                                        "(crontab -l; echo \"* * * * * /usr/bin/flock -n /tmp/lifecycle-config-v2-dev-endpoint-daemon.lock /usr/bin/sudo /bin/sh /home/ec2-user/glue/lifecycle-config-v2-dev-endpoint-daemon.sh\") | crontab -\n",
+                                        "\n",
+                                        "(crontab -l; echo \"* * * * * /usr/bin/flock -n /tmp/lifecycle-config-reconnect-dev-endpoint-daemon.lock /usr/bin/sudo /bin/sh /home/ec2-user/glue/lifecycle-config-reconnect-dev-endpoint-daemon.sh\") | crontab -\n",
+                                        "\n",
+                                        "CONNECTION_CHECKER_FILE=/home/ec2-user/glue/dev_endpoint_connection_checker.py\n",
+                                        "if [ -f \"$CONNECTION_CHECKER_FILE\" ]; then\n",
+                                        "    # wait for async dev endpoint connection to come up\n",
+                                        "    echo \"Checking DevEndpoint connection.\"\n",
+                                        "    nohup python3 $CONNECTION_CHECKER_FILE &\n",
+                                        "fi\n",
+                                        "\n",
+                                        "source \"/home/ec2-user/glue/miniconda/bin/deactivate\"\n",
+                                        "\n",
+                                        "rm -rf \"/home/ec2-user/glue/Miniconda2-4.5.12-Linux-x86_64.sh\"\n",
+                                        "\n",
+                                        "sudo touch /home/ec2-user/glue_ready"
+                                    ]
+                                ]
+                            }
+                        }
+                    }
+                ],
+                "OnStart": [
+                    {
+                        "Content": {
+                            "Fn::Base64": {
+                                "Fn::Join": [
+                                    "",
+                                    [
+                                        "#!/bin/bash\n",
+                                        "set -ex\n",
+                                        "[ -e /home/ec2-user/glue_ready ] && exit 0\n",
+                                        "\n",
+                                        "mkdir -p /home/ec2-user/glue\n",
+                                        "cd /home/ec2-user/glue\n",
+                                        "\n",
+                                        "# Write dev endpoint in a file which will be used by daemon scripts\n",
+                                        "glue_endpoint_file=\"/home/ec2-user/glue/glue_endpoint.txt\"\n",
+                                        "\n",
+                                        "if [ -f $glue_endpoint_file ] ; then\n",
+                                        "    rm $glue_endpoint_file\n",
+                                        "fi\n",
+                                        "echo \"https://glue.us-east-1.amazonaws.com\" >> $glue_endpoint_file\n",
+                                        "\n",
+                                        "ASSETS=s3://aws-glue-jes-prod-us-east-1-assets/sagemaker/assets/\n",
+                                        "\n",
+                                        "aws s3 cp ${ASSETS} . --recursive\n",
+                                        "\n",
+                                        "bash \"/home/ec2-user/glue/Miniconda2-4.5.12-Linux-x86_64.sh\" -b -u -p \"/home/ec2-user/glue/miniconda\"\n",
+                                        "\n",
+                                        "source \"/home/ec2-user/glue/miniconda/bin/activate\"\n",
+                                        "\n",
+                                        "tar -xf autossh-1.4e.tgz\n",
+                                        "cd autossh-1.4e\n",
+                                        "./configure\n",
+                                        "make\n",
+                                        "sudo make install\n",
+                                        "cp /home/ec2-user/glue/autossh-1.4e/autossh.host /home/ec2-user/glue/autossh.host\n",
+                                        "sudo cp /home/ec2-user/glue/autossh.conf /etc/init/\n",
+                                        "\n",
+                                        "mkdir -p /home/ec2-user/.sparkmagic\n",
+                                        "cp /home/ec2-user/glue/config.json /home/ec2-user/.sparkmagic/config.json\n",
+                                        "\n",
+                                        "mkdir -p /home/ec2-user/SageMaker/Glue\\ Examples\n",
+                                        "mv /home/ec2-user/glue/notebook-samples/* /home/ec2-user/SageMaker/Glue\\ Examples/\n",
+                                        "\n",
+                                        "# ensure SageMaker notebook has permission for the dev endpoint\n",
+                                        "NOTEBOOK_ARN=$(jq '.ResourceArn' /opt/ml/metadata/resource-metadata.json --raw-output)\n",
+                                        "GLUE_DEV_ENDPOINT_TAG=$(aws sagemaker list-tags --resource-arn $NOTEBOOK_ARN | jq -r '.Tags[] | select(.Key == \"aws-glue-dev-endpoint\") | .Value')\n",
+                                        "aws glue get-dev-endpoint --endpoint-name $GLUE_DEV_ENDPOINT_TAG --endpoint https://glue.us-east-1.amazonaws.com\n",
+                                        "\n",
+                                        "# Run daemons as cron jobs and use flock make sure that daemons are started only iff stopped\n",
+                                        "(crontab -l; echo \"* * * * * /usr/bin/flock -n /tmp/lifecycle-config-v2-dev-endpoint-daemon.lock /usr/bin/sudo /bin/sh /home/ec2-user/glue/lifecycle-config-v2-dev-endpoint-daemon.sh\") | crontab -\n",
+                                        "\n",
+                                        "(crontab -l; echo \"* * * * * /usr/bin/flock -n /tmp/lifecycle-config-reconnect-dev-endpoint-daemon.lock /usr/bin/sudo /bin/sh /home/ec2-user/glue/lifecycle-config-reconnect-dev-endpoint-daemon.sh\") | crontab -\n",
+                                        "\n",
+                                        "CONNECTION_CHECKER_FILE=/home/ec2-user/glue/dev_endpoint_connection_checker.py\n",
+                                        "if [ -f \"$CONNECTION_CHECKER_FILE\" ]; then\n",
+                                        "    # wait for async dev endpoint connection to come up\n",
+                                        "    echo \"Checking DevEndpoint connection.\"\n",
+                                        "    nohup python3 $CONNECTION_CHECKER_FILE &\n",
+                                        "fi\n",
+                                        "\n",
+                                        "source \"/home/ec2-user/glue/miniconda/bin/deactivate\"\n",
+                                        "\n",
+                                        "rm -rf \"/home/ec2-user/glue/Miniconda2-4.5.12-Linux-x86_64.sh\"\n",
+                                        "\n",
+                                        "sudo touch /home/ec2-user/glue_ready"
+                                    ]
+                                ]
+                            }
+                        }
+                    }
+                ]
+            },
+            "Type": "AWS::SageMaker::NotebookInstanceLifecycleConfig"
+        },
+        "sagemakerNotebookRole": {
+            "DependsOn": [
+                "CodeCommitRepository",
+                "getGlueDEP"
+            ],
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Statement": [
+                        {
+                            "Action": [
+                                "sts:AssumeRole"
+                            ],
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": "sagemaker.amazonaws.com"
+                            }
+                        }
+                    ]
+                },
+                "Description": "Sagemaker notebook role",
+                "Policies": [
+                    {
+                        "PolicyDocument": {
+                            "Id": "inlineGluePolicy",
+                            "Statement": [
+                                {
+                                    "Action": [
+                                        "glue:GetDatabase",
+                                        "glue:GetDatabases",
+                                        "glue:CreateDatabase",
+                                        "glue:UpdateDatabase",
+                                        "glue:DeleteDatabase",
+                                        "glue:CreateTable",
+                                        "glue:DeleteTable",
+                                        "glue:GetTable",
+                                        "glue:GetTables",
+                                        "glue:UpdateTable",
+                                        "glue:BatchDeleteTable",
+                                        "glue:BatchCreatePartition",
+                                        "glue:BatchDeletePartition",
+                                        "glue:BatchGetPartition",
+                                        "glue:CreatePartition",
+                                        "glue:DeletePartition",
+                                        "glue:GetPartition",
+                                        "glue:GetPartitions",
+                                        "glue:UpdatePartition",
+                                        "glue:GetDevEndpoint",
+                                        "glue:GetDevEndpoints",
+                                        "glue:ListDevEndpoints",
+                                        "glue:BatchGetTriggers",
+                                        "glue:CreateTrigger",
+                                        "glue:DeleteTrigger",
+                                        "glue:GetTriggers",
+                                        "glue:GetTrigger",
+                                        "glue:ListTriggers",
+                                        "glue:StartTrigger",
+                                        "glue:StopTrigger",
+                                        "glue:UpdateTrigger"
+                                    ],
+                                    "Effect": "Allow",
+                                    "Resource": [
+                                        "arn:aws:glue:::*"
+                                    ]
+                                },
+                                {
+                                    "Action": [
+                                        "s3:*"
+                                    ],
+                                    "Effect": "Allow",
+                                    "Resource": [
+                                        "arn:aws:s3:::*"
+                                    ]
+                                },
+                                {
+                                    "Action": [
+                                        "sagemaker:List*",
+                                        "sagemaker:Get*"
+                                    ],
+                                    "Effect": "Allow",
+                                    "Resource": [
+                                        {
+                                            "Fn::Sub": "arn:aws:sagemaker:${AWS::Region}:${AWS::AccountId}:notebook-instance/*"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "Action": [
+                                        "codecommit:*"
+                                    ],
+                                    "Effect": "Allow",
+                                    "Resource": [
+                                        {
+                                            "Fn::GetAtt": [
+                                                "CodeCommitRepository",
+                                                "Arn"
+                                            ]
+                                        }
+                                    ]
+                                },
+                                {
+                                    "Action": [
+                                        "glue:BatchGetDevEndpoints",
+                                        "glue:GetDevEndpoint",
+                                        "glue:GetDevEndpoints",
+                                        "glue:ListDevEndpoints",
+                                        "glue:UpdateDevEndpoint",
+                                        "glue:GetTrigger",
+                                        "glue:UpdateTrigger",
+                                        "glue:ListDevEndpoints",
+                                        "glue:BatchGetTriggers",
+                                        "glue:GetTriggers",
+                                        "glue:CreateTrigger",
+                                        "glue:StopTrigger",
+                                        "glue:ListTriggers",
+                                        "glue:DeleteTrigger",
+                                        "glue:StartTrigger"
+                                    ],
+                                    "Effect": "Allow",
+                                    "Resource": [
+                                        "*"
+                                    ]
+                                }
+                            ],
+                            "Version": "2012-10-17"
+                        },
+                        "PolicyName": "ETLDevelopmentSagemakerPolicy"
+                    }
+                ],
+                "RoleName": {
+                    "Ref": "sagemakerNotebookRoleName"
+                }
+            },
+            "Type": "AWS::IAM::Role"
+        }
+    }
+}
